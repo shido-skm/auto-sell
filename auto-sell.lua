@@ -29,22 +29,23 @@ local ability_IDs = 0
 
 -- Function to load inventory stats from a file
 local function loadStats()
-    local file = io.open("inv-stats.txt", "r")
-    if file then
-        for line in file:lines() do
-            -- Parse item information
+    local saveFolder = "folder"
+    if not isfolder(saveFolder) then makefolder(saveFolder) end
+    local filePath = saveFolder .. "/inv-stats.txt"
+ 
+    if isfile(filePath) then
+        local content = readfile(filePath)
+        for line in content:gmatch("[^\r\n]+") do
             if line:find(",") then
                 local itemName, rarity, category = line:match("([^,]+), ([^,]+), ([^,]+)")
                 table.insert(currentItems, {name = itemName, rarity = rarity, category = category})
             else
-                -- Update ID counts
                 local idName, idValue = line:match("(%w+)_IDs: (%d+)")
                 if idName and idValue then
                     _G[idName .. "_IDs"] = tonumber(idValue)
                 end
             end
         end
-        file:close()
     else
         warn("Failed to load inventory stats")
     end
@@ -52,17 +53,18 @@ end
 
 -- Function to save the inventory stats to a file
 local function saveStats()
-    local file = io.open("inv-stats.txt", "w")
-    if file then
-        for _, item in ipairs(currentItems) do
-            file:write(string.format("%s, %s, %s\n", item.name, item.rarity, item.category))
-        end
-        file:write(string.format("weapon_IDs: %d\nchest_IDs: %d\nhelmet_IDs: %d\nability_IDs: %d\n",
-            weapon_IDs, chest_IDs, helmet_IDs, ability_IDs))
-        file:close()
-    else
-        warn("Failed to save inventory stats")
+    local saveFolder = "folder"
+    if not isfolder(saveFolder) then makefolder(saveFolder) end
+    local filePath = saveFolder .. "/inv-stats.txt"
+ 
+    local content = ""
+    for _, item in ipairs(currentItems) do
+        content = content .. string.format("%s, %s, %s\n", item.name, item.rarity, item.category)
     end
+    content = content .. string.format("weapon_IDs: %d\nchest_IDs: %d\nhelmet_IDs: %d\nability_IDs: %d\n",
+        weapon_IDs, chest_IDs, helmet_IDs, ability_IDs)
+ 
+    writefile(filePath, content)
 end
 
 -- Function to get the current inventory items
