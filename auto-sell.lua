@@ -21,35 +21,31 @@ SellToggle.Text = "Sell: OFF"
 SellToggle.Parent = MainFrame
 
 local isSelling = false
+local weapon_IDs = 0
+local chest_IDs = 0
+local helmet_IDs = 0
+local ability_IDs = 0
 
--- Function to save the toggle state
-local function saveToggleState()
-    local file = io.open("auto_sell_state.txt", "w")
+-- Function to save inventory stats
+local function saveStats()
+    local file = io.open("inv-stats.txt", "w")
     if file then
-        file:write(tostring(isSelling))
-        file:close()
-    else
-        warn("Failed to save auto-sell state")
-    end
-end
-
--- Function to load the toggle state
-local function loadToggleState()
-    local file = io.open("auto_sell_state.txt", "r")
-    if file then
-        local content = file:read("*all")
-        file:close()
-        isSelling = (content == "true")
-        SellToggle.Text = isSelling and "Sell: ON" or "Sell: OFF"
-        if isSelling then
-            startAutoSell()
+        file:write("Weapon IDs: " .. weapon_IDs .. "\n")
+        file:write("Chest IDs: " .. chest_IDs .. "\n")
+        file:write("Helmet IDs: " .. helmet_IDs .. "\n")
+        file:write("Ability IDs: " .. ability_IDs .. "\n")
+        
+        -- List all items (you need to implement getInventoryItems)
+        local items = getInventoryItems()
+        for _, item in ipairs(items) do
+            file:write(string.format("%s, %s, %s\n", item.name, item.rarity, item.category))
         end
+        
+        file:close()
     else
-        warn("No saved auto-sell state found")
+        warn("Failed to save inventory stats")
     end
 end
-
--- Rest of the functions (getInventoryItems, saveStats, sellItems) remain the same
 
 local function startAutoSell()
     spawn(function()
@@ -74,15 +70,15 @@ local function startAutoSell()
                 end
             end
             
-            if not hasLegendaryAbility then
-                for _, item in ipairs(newAbilities) do
-                    table.insert(itemsToSell, item)
-                end
+            if hasLegendaryAbility then
+                -- If there's a legendary ability, only sell new weapons, chests, and helmets
+                sellItems(itemsToSell)  -- Sell only weapons, chests, helmets
+                ability_IDs = ability_IDs + #newAbilities  -- Add count of new abilities
+            else
+                -- If no legendary ability, sell all new items
+                sellItems(itemsToSell)
+                ability_IDs = ability_IDs + #newAbilities  -- Add count of new abilities
             end
-            
-            sellItems(itemsToSell)
-            
-            -- Update counts (file I/O part remains the same)
             
             oldItems = newItems
         end
@@ -93,8 +89,6 @@ local function toggleSell()
     isSelling = not isSelling
     SellToggle.Text = isSelling and "Sell: ON" or "Sell: OFF"
     
-    saveToggleState()  -- Save the new state
-    
     if isSelling then
         startAutoSell()
     end
@@ -102,6 +96,3 @@ end
 
 SaveButton.MouseButton1Click:Connect(saveStats)
 SellToggle.MouseButton1Click:Connect(toggleSell)
-
--- Load the toggle state when the script starts
-loadToggleState()
