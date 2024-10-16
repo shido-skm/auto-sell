@@ -21,7 +21,7 @@ SellToggle.Text = "Sell: OFF"
 SellToggle.Parent = MainFrame
 
 local isSelling = false
-local weapon_IDs, chest_IDs, helmet_IDs, ability_IDs = {}, {}, {}, {}
+local weapon_count, chest_count, helmet_count, ability_count = 0, 0, 0, 0
 local storedItemList = {}
 
 local function getInventoryItems()
@@ -44,24 +44,27 @@ local function saveStats()
     local inventoryItems = getInventoryItems()
     storedItemList = inventoryItems
     
-    weapon_IDs = {}
-    chest_IDs = {}
-    helmet_IDs = {}
-    ability_IDs = {}
+    weapon_count = 0
+    chest_count = 0
+    helmet_count = 0
+    ability_count = 0
     
-    for i, item in ipairs(inventoryItems) do
+    for _, item in ipairs(inventoryItems) do
         if item.category == "weapon" then
-            table.insert(weapon_IDs, i)
+            weapon_count = weapon_count + 1
         elseif item.category == "chest" then
-            table.insert(chest_IDs, i)
+            chest_count = chest_count + 1
         elseif item.category == "helmet" then
-            table.insert(helmet_IDs, i)
+            helmet_count = helmet_count + 1
         elseif item.category == "ability" then
-            table.insert(ability_IDs, i)
+            ability_count = ability_count + 1
         end
     end
 
-    local content = "Item Data:\n"
+    local content = string.format("weapon_count: %d\nchest_count: %d\nhelmet_count: %d\nability_count: %d\n",
+        weapon_count, chest_count, helmet_count, ability_count)
+
+    content = content .. "Item Data:\n"
     for _, item in ipairs(inventoryItems) do
         content = content .. string.format("%s,%s,%s\n", item.name, item.category, item.rarity)
     end
@@ -72,12 +75,21 @@ end
 local function loadStats()
     if isfile("inv-state.txt") then
         local content = readfile("inv-state.txt")
+        local itemDataSection = false
         storedItemList = {}
+
         for line in content:gmatch("[^\r\n]+") do
-            if line ~= "Item Data:" then
+            if line == "Item Data:" then
+                itemDataSection = true
+            elseif itemDataSection then
                 local name, category, rarity = line:match("([^,]+),([^,]+),([^,]+)")
                 if name and category and rarity then
                     table.insert(storedItemList, {name = name, category = category, rarity = rarity})
+                end
+            else
+                local countName, countValue = line:match("(%w+)_count: (%d+)")
+                if countName and countValue then
+                    _G[countName .. "_count"] = tonumber(countValue)
                 end
             end
         end
@@ -107,9 +119,9 @@ local function startAutoSell()
             -- Determine items to sell
             for _, item in ipairs(newItems) do
                 if item.category ~= "ability" or (item.category == "ability" and not hasLegendaryAbility) then
-                    local categoryIDs = _G[item.category .. "_IDs"]
-                    if #itemsToSell[item.category] < 9 and #categoryIDs + #itemsToSell[item.category] < #storedItemList then
-                        table.insert(itemsToSell[item.category], #categoryIDs + #itemsToSell[item.category] + 1)
+                    local categoryCount = _G[item.category .. "_count"]
+                    if #itemsToSell[item.category] < 9 and categoryCount + #itemsToSell[item.category] < #currentItems then
+                        table.insert(itemsToSell[item.category], categoryCount + #itemsToSell[item.category] + 1)
                     end
                 end
             end
@@ -132,7 +144,7 @@ local function startAutoSell()
                 if hasLegendaryAbility then
                     for _, item in ipairs(newItems) do
                         if item.category == "ability" then
-                            table.insert(ability_IDs, #ability_IDs + 1)
+                            ability_count = ability_count + 1
                             table.insert(storedItemList, item)
                         end
                     end
