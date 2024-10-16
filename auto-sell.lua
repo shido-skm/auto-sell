@@ -21,35 +21,64 @@ SellToggle.Text = "Sell: OFF"
 SellToggle.Parent = MainFrame
 
 local isSelling = false
-local inventoryState = {}
+local weapon_IDs, chest_IDs, helmet_IDs, ability_IDs = {}, {}, {}, {}
+local storedItemList = {}
 
 local function getInventoryItems()
+    local inventoryItems = {}
     local inventoryFrame = PlayerGui:WaitForChild("InventoryUi").Main.Display.Gear.ItemScrollingFrame
-    local currentItems = {}
 
     for _, item in ipairs(inventoryFrame:GetChildren()) do
         if item:IsA("TextButton") then
             local itemType = item:GetAttribute("ItemType")
             local itemRarity = item:GetAttribute("Rarity")
             if itemType and itemRarity then
-                table.insert(currentItems, {name = item.Name, rarity = itemRarity, type = itemType})
+                table.insert(inventoryItems, {name = item.Name, category = itemType, rarity = itemRarity})
             end
         end
     end
+    return inventoryItems
+end
 
-    return currentItems
+local function saveStats()
+    local inventoryItems = getInventoryItems()
+    storedItemList = inventoryItems
+    
+    weapon_IDs = {}
+    chest_IDs = {}
+    helmet_IDs = {}
+    ability_IDs = {}
+    
+    for i, item in ipairs(inventoryItems) do
+        if item.category == "weapon" then
+            table.insert(weapon_IDs, i)
+        elseif item.category == "chest" then
+            table.insert(chest_IDs, i)
+        elseif item.category == "helmet" then
+            table.insert(helmet_IDs, i)
+        elseif item.category == "ability" then
+            table.insert(ability_IDs, i)
+        end
+    end
+
+    local content = "Item Data:\n"
+    for _, item in ipairs(inventoryItems) do
+        content = content .. string.format("%s,%s,%s\n", item.name, item.category, item.rarity)
+    end
+
+    writefile("inv-state.txt", content)
 end
 
 local function loadStats()
-    local filePath = "inv-stats.txt"
-
-    if isfile(filePath) then
-        local content = readfile(filePath)
-        inventoryState = {}  -- Reset the inventory state
+    if isfile("inv-state.txt") then
+        local content = readfile("inv-state.txt")
+        storedItemList = {}
         for line in content:gmatch("[^\r\n]+") do
-            local itemName, itemRarity, itemType = line:match("(%w+), (%w+), (%w+)")
-            if itemName and itemRarity and itemType then
-                table.insert(inventoryState, {name = itemName, rarity = itemRarity, type = itemType})
+            if line ~= "Item Data:" then
+                local name, category, rarity = line:match("([^,]+),([^,]+),([^,]+)")
+                if name and category and rarity then
+                    table.insert(storedItemList, {name = name, category = category, rarity = rarity})
+                end
             end
         end
     else
@@ -57,66 +86,58 @@ local function loadStats()
     end
 end
 
-local function saveStats()
-    local filePath = "inv-stats.txt"
-    local content = ""
-
-    for _, item in ipairs(inventoryState) do
-        content = content .. string.format("%s, %s, %s\n", item.name, item.rarity, item.type)
-    end
-
-    writefile(filePath, content)
-end
-
 local function startAutoSell()
     spawn(function()
         while isSelling do
             wait(1)
 
-            local currentInventory = getInventoryItems()
-            local itemsToSell = {weapon = {}, chest = {}, helmet = {}, ability = {}}
-            local newAbilitiesCount = 0
+            local currentItems = getInventoryItems()
+            local newItems = {}
             local hasLegendaryAbility = false
+            local itemsToSell = {weapon = {}, chest = {}, helmet = {}, ability = {}}
 
-            for _, item in ipairs(currentInventory) do
-                local isNewItem = true
-                for _, savedItem in ipairs(inventoryState) do
-                    if item.name == savedItem.name and item.rarity == savedItem.rarity and item.type == savedItem.type then
-                        isNewItem = false
-                        break
-                    end
+            -- Identify new items
+            for i = #storedItemList + 1, #currentItems do
+                table.insert(newItems, currentItems[i])
+                if currentItems[i].category == "ability" and currentItems[i].rarity == "Legendary" then
+                    hasLegendaryAbility = true
                 end
+            end
 
-                if isNewItem then
-                    if item.type == "ability" then
-                        if item.rarity == "Legendary" then
-                            hasLegendaryAbility = true
-                        end
-                        newAbilitiesCount = newAbilitiesCount + 1
-                    else
-                        table.insert(itemsToSell[item.type], item.name)
+            -- Determine items to sell
+            for _, item in ipairs(newItems) do
+                if item.category ~= "ability" or (item.category == "ability" and not hasLegendaryAbility) then
+                    local categoryIDs = _G[item.category .. "_IDs"]
+                    if #itemsToSell[item.category] < 9 and #categoryIDs + #itemsToSell[item.category] < #storedItemList then
+                        table.insert(itemsToSell[item.category], #categoryIDs + #itemsToSell[item.category] + 1)
                     end
                 end
             end
 
-            -- Sell logic based on detected items
-            local args = {
-                [1] = {
-                    ["chest"] = itemsToSell.chest,
-                    ["helmet"] = itemsToSell.helmet,
-                    ["weapon"] = itemsToSell.weapon,
-                    ["ability"] = hasLegendaryAbility and {} or itemsToSell.ability  -- Don't sell abilities if a legendary is present
+            -- Sell items
+            if #itemsToSell.weapon > 0 or #itemsToSell.chest > 0 or #itemsToSell.helmet > 0 or #itemsToSell.ability > 0 then
+                local args = {
+                    [1] = {
+                        ["chest"] = itemsToSell.chest,
+                        ["ability"] = itemsToSell.ability,
+                        ["helmet"] = itemsToSell.helmet,
+                        ["ring"] = {},
+                        ["weapon"] = itemsToSell.weapon
+                    }
                 }
-            }
 
-            game:GetService("ReplicatedStorage").remotes.sellItemEvent:FireServer(unpack(args))
+                game:GetService("ReplicatedStorage").remotes.sellItemEvent:FireServer(unpack(args))
 
-            -- Update inventory state only if no legendary ability was detected
-            if not hasLegendaryAbility then
-                for _, item in ipairs(currentInventory) do
-                    table.insert(inventoryState, item)
+                -- Update stored item list and save stats only if a legendary ability was found
+                if hasLegendaryAbility then
+                    for _, item in ipairs(newItems) do
+                        if item.category == "ability" then
+                            table.insert(ability_IDs, #ability_IDs + 1)
+                            table.insert(storedItemList, item)
+                        end
+                    end
+                    saveStats()
                 end
-                saveStats()  -- Save updated inventory state
             end
         end
     end)
