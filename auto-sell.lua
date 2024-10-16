@@ -21,66 +21,91 @@ SellToggle.Text = "Sell: OFF"
 SellToggle.Parent = MainFrame
 
 local isSelling = false
+local currentItems = {}
 local weapon_IDs = 0
 local chest_IDs = 0
 local helmet_IDs = 0
 local ability_IDs = 0
 
--- Function to save inventory stats
+-- Function to load inventory stats from a file
+local function loadStats()
+    local file = io.open("inv-stats.txt", "r")
+    if file then
+        for line in file:lines() do
+            -- Parse item information
+            if line:find(",") then
+                local itemName, rarity, category = line:match("([^,]+), ([^,]+), ([^,]+)")
+                table.insert(currentItems, {name = itemName, rarity = rarity, category = category})
+            else
+                -- Update ID counts
+                local idName, idValue = line:match("(%w+)_IDs: (%d+)")
+                if idName and idValue then
+                    _G[idName .. "_IDs"] = tonumber(idValue)
+                end
+            end
+        end
+        file:close()
+    else
+        warn("Failed to load inventory stats")
+    end
+end
+
+-- Function to save the inventory stats to a file
 local function saveStats()
     local file = io.open("inv-stats.txt", "w")
     if file then
-        file:write("Weapon IDs: " .. weapon_IDs .. "\n")
-        file:write("Chest IDs: " .. chest_IDs .. "\n")
-        file:write("Helmet IDs: " .. helmet_IDs .. "\n")
-        file:write("Ability IDs: " .. ability_IDs .. "\n")
-        
-        -- List all items (you need to implement getInventoryItems)
-        local items = getInventoryItems()
-        for _, item in ipairs(items) do
+        for _, item in ipairs(currentItems) do
             file:write(string.format("%s, %s, %s\n", item.name, item.rarity, item.category))
         end
-        
+        file:write(string.format("weapon_IDs: %d\nchest_IDs: %d\nhelmet_IDs: %d\nability_IDs: %d\n",
+            weapon_IDs, chest_IDs, helmet_IDs, ability_IDs))
         file:close()
     else
         warn("Failed to save inventory stats")
     end
 end
 
+-- Function to get the current inventory items
+local function getInventoryItems()
+    local items = {}
+    -- Logic to retrieve items and populate the items table (same logic as before)
+    return items
+end
+
 local function startAutoSell()
     spawn(function()
-        local oldItems = getInventoryItems()
+        local oldItems = currentItems -- Initial state
         while isSelling do
-            wait(1)  -- Check every second
+            wait(1) -- Check every second
             local newItems = getInventoryItems()
             local itemsToSell = {}
             local newAbilities = {}
             local hasLegendaryAbility = false
             
-            for _, item in ipairs(newItems) do
-                if not table.find(oldItems, item) then
-                    if item.category == "ability" then
-                        table.insert(newAbilities, item)
-                        if item.rarity == "Legendary" then
+            -- Compare new items with old items
+            for _, newItem in ipairs(newItems) do
+                if not table.find(oldItems, newItem) then
+                    if newItem.category == "ability" then
+                        table.insert(newAbilities, newItem)
+                        if newItem.rarity == "Legendary" then
                             hasLegendaryAbility = true
                         end
                     else
-                        table.insert(itemsToSell, item)
+                        table.insert(itemsToSell, newItem)
                     end
                 end
             end
             
             if hasLegendaryAbility then
-                -- If there's a legendary ability, only sell new weapons, chests, and helmets
-                sellItems(itemsToSell)  -- Sell only weapons, chests, helmets
-                ability_IDs = ability_IDs + #newAbilities  -- Add count of new abilities
+                -- Sell only weapons, chests, and helmets
+                sellItems(itemsToSell) -- Implement sellItems function as necessary
+                ability_IDs = ability_IDs + #newAbilities -- Update ability_IDs count
             else
-                -- If no legendary ability, sell all new items
-                sellItems(itemsToSell)
-                ability_IDs = ability_IDs + #newAbilities  -- Add count of new abilities
+                -- Sell all new items including abilities
+                sellItems(newItems) -- Implement sellItems function as necessary
             end
-            
-            oldItems = newItems
+
+            currentItems = newItems -- Update the current items list
         end
     end)
 end
@@ -96,3 +121,6 @@ end
 
 SaveButton.MouseButton1Click:Connect(saveStats)
 SellToggle.MouseButton1Click:Connect(toggleSell)
+
+-- Load initial item state
+loadStats() -- Load current items and ID counts when script starts
